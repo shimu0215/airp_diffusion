@@ -54,7 +54,7 @@ def extend_atomic_numbers_one_hot(atomic_numbers, max_atom_number):
 
     return atomic_numbers_ext
 
-def generate_a_sample_dataset(loaded_tensor, species_name, max_atom_number):
+def generate_a_sample_dataset(loaded_tensor, species_name, max_atom_number, max_atom_id):
 
     database = loaded_tensor[0]
 
@@ -85,10 +85,11 @@ def generate_a_sample_dataset(loaded_tensor, species_name, max_atom_number):
     for i in range(n_molecules):
         start, end = indices[i], indices[i + 1]
 
+        # The version that makes all molecules have the same number of atoms
         data = Data(
         pos=extend_atom_3_feature(pos[start:end], max_atom_number), # atom
         atomic_numbers=extend_atom_feature(z[start:end], max_atom_number), # atom
-        atomic_numbers_one_hot = extend_atomic_numbers_one_hot(F.one_hot(z[start:end], num_classes=10), max_atom_number), # atom
+        atomic_numbers_one_hot = extend_atomic_numbers_one_hot(F.one_hot(z[start:end], num_classes=max_atom_id), max_atom_number), # atom
         atom_mask = generate_atom_mask(z[start:end].shape[0], max_atom_number), # atom
         edge_mask = generate_edge_mask(z[start:end].shape[0], max_atom_number),
         # original_batch=original_batch[start:end], # atom
@@ -100,6 +101,7 @@ def generate_a_sample_dataset(loaded_tensor, species_name, max_atom_number):
         species = extend_atom_feature(torch.full((end-start,), species), max_atom_number) # atom
         )
 
+        # The version that keeps the original number of atoms for each molecule
         # data = Data(
         #     pos=pos[start:end],  # atom
         #     atomic_numbers=z[start:end],  # atom
@@ -133,7 +135,7 @@ def calculate_max_node_number(loaded_tensor):
     return max_diff.item()
 
 
-def read_dataset(path, max_atom_number):
+def read_dataset(path, max_atom_number=29, max_atom_id=9):
 
     file_list = glob.glob(os.path.join(path, "qm9star_*_chunk*_processed.pt"))
     pattern = re.compile(r"qm9star_(.+?)_chunk\d+_processed\.pt")
@@ -144,7 +146,7 @@ def read_dataset(path, max_atom_number):
         name = match.group(1)
 
         loaded_tensor = torch.load(file, weights_only=False)
-        dataset = generate_a_sample_dataset(loaded_tensor, name, max_atom_number)
+        dataset = generate_a_sample_dataset(loaded_tensor, name, max_atom_number, max_atom_id)
 
         data_list += dataset
 
@@ -182,14 +184,45 @@ def calculate_datasets_config(path):
         print(curr_n_nodes)
 
 
+def estimate_dataset(path):
+    """
+    Calculate config of dataset, currently calculate the max number atoms in one molecule
+    and the largest atom id used.
+    :param path: path to dataset
+    Result; max_atom_number:  29 max_atom_id:  9
+    """
+    max_atom_number = -1
+    max_atom_id = -1
+
+    file_list = glob.glob(os.path.join(path, "qm9star_*_chunk*_processed.pt"))
+
+    for file in file_list:
+
+        loaded_tensor = torch.load(file)
+
+        curr_max_atom_number = torch.max(nbatch_transform(loaded_tensor[1]['z'])).item()
+        curr_max_atom_id = torch.max(loaded_tensor[0].z).item()
+
+        if curr_max_atom_number > max_atom_number:
+            max_atom_number = curr_max_atom_number
+        if curr_max_atom_id > max_atom_id:
+            max_atom_id = curr_max_atom_id
+
+        print('current file: ', file, 'max_atom_number: ', curr_max_atom_number, 'max_atom_id: ', curr_max_atom_id, '\n')
+
+    print("max_atom_number: ", max_atom_number, "max_atom_id: ", max_atom_id)
+
+
 if __name__ == "__main__":
 
     # calculate_datasets_config("data/processed")
 
-    max_atom_number = 28
+    max_atom_number = 29
+    max_atom_id = 9
 
     # load data set
-    train_list, val_list, test_list = read_dataset("data/processed", max_atom_number = max_atom_number)
+    train_list, val_list, test_list = read_dataset("data/processed",
+                                                   max_atom_number = max_atom_number, max_node_number = 9)
     #
     train_loader = DataLoader(train_list, batch_size=32, shuffle=False)
     val_loader = DataLoader(val_list, batch_size=32)
