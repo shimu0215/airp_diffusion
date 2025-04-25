@@ -181,18 +181,18 @@ if __name__ == '__main__':
 
     batch_size = 64
     data_path = 'data/processed'
-    max_atom_number = 28
-    num_class = 10
+    max_atom_number = 29
+    max_atom_id = 10
 
     T = torch.tensor(1000)
 
-    train_list, val_list, test_list = read_dataset(data_path, max_atom_number=max_atom_number)
+    train_list, val_list, test_list = read_dataset(data_path, max_atom_number=max_atom_number, max_atom_id = max_atom_id)
     train_loader = DataLoader(train_list, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_list, batch_size=batch_size)
     test_loader = DataLoader(test_list, batch_size=batch_size)
 
     model = train(T=T, train_loader = train_loader, val_loader=val_loader,
-                  max_atom_number=max_atom_number, num_class=num_class,
+                  max_atom_number=max_atom_number, num_class=max_atom_id,
                   device=device, dtype=dtype)
 
     torch.save(model.state_dict(), 'saved_model/gschnet_model.pth')

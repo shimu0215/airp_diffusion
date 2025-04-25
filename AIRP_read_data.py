@@ -47,9 +47,9 @@ def extend_atom_feature(feature, max_atom_number):
 
     return new_feature
 
-def extend_atomic_numbers_one_hot(atomic_numbers, max_atom_number):
+def extend_atomic_numbers_one_hot(atomic_numbers, max_atom_number, max_atom_id):
     n_atoms = atomic_numbers.shape[0]
-    atomic_numbers_ext = torch.zeros(max_atom_number, 10)
+    atomic_numbers_ext = torch.zeros(max_atom_number, max_atom_id)
     atomic_numbers_ext[:n_atoms] = atomic_numbers
 
     return atomic_numbers_ext
@@ -89,7 +89,7 @@ def generate_a_sample_dataset(loaded_tensor, species_name, max_atom_number, max_
         data = Data(
         pos=extend_atom_3_feature(pos[start:end], max_atom_number), # atom
         atomic_numbers=extend_atom_feature(z[start:end], max_atom_number), # atom
-        atomic_numbers_one_hot = extend_atomic_numbers_one_hot(F.one_hot(z[start:end], num_classes=max_atom_id), max_atom_number), # atom
+        atomic_numbers_one_hot = extend_atomic_numbers_one_hot(F.one_hot(z[start:end], num_classes=max_atom_id), max_atom_number, max_atom_id), # atom
         atom_mask = generate_atom_mask(z[start:end].shape[0], max_atom_number), # atom
         edge_mask = generate_edge_mask(z[start:end].shape[0], max_atom_number),
         # original_batch=original_batch[start:end], # atom
@@ -105,7 +105,7 @@ def generate_a_sample_dataset(loaded_tensor, species_name, max_atom_number, max_
         # data = Data(
         #     pos=pos[start:end],  # atom
         #     atomic_numbers=z[start:end],  # atom
-        #     atomic_numbers_one_hot=F.one_hot(z[start:end], num_classes=10),  # atom
+        #     atomic_numbers_one_hot=F.one_hot(z[start:end], num_classes=max_atom_id),  # atom
         #     atom_mask=z[start:end].shape[0],  # atom
         #     # edge_mask=z[start:end].shape[0],
         #     # original_batch=original_batch[start:end], # atom
@@ -135,7 +135,7 @@ def calculate_max_node_number(loaded_tensor):
     return max_diff.item()
 
 
-def read_dataset(path, max_atom_number=29, max_atom_id=9):
+def read_dataset(path, max_atom_number=29, max_atom_id=10):
 
     file_list = glob.glob(os.path.join(path, "qm9star_*_chunk*_processed.pt"))
     pattern = re.compile(r"qm9star_(.+?)_chunk\d+_processed\.pt")
@@ -189,7 +189,7 @@ def estimate_dataset(path):
     Calculate config of dataset, currently calculate the max number atoms in one molecule
     and the largest atom id used.
     :param path: path to dataset
-    Result; max_atom_number:  29 max_atom_id:  9
+    Result; max_atom_number:  29 max_atom_id:  10
     """
     max_atom_number = -1
     max_atom_id = -1
@@ -218,11 +218,11 @@ if __name__ == "__main__":
     # calculate_datasets_config("data/processed")
 
     max_atom_number = 29
-    max_atom_id = 9
+    max_atom_id = 10
 
     # load data set
     train_list, val_list, test_list = read_dataset("data/processed",
-                                                   max_atom_number = max_atom_number, max_node_number = 9)
+                                                   max_atom_number = max_atom_number, max_atom_id = max_atom_id)
     #
     train_loader = DataLoader(train_list, batch_size=32, shuffle=False)
     val_loader = DataLoader(val_list, batch_size=32)
