@@ -135,7 +135,7 @@ def calculate_max_node_number(loaded_tensor):
     return max_diff.item()
 
 
-def read_dataset(path, max_atom_number=29, max_atom_id=10):
+def read_dataset(path, max_atom_number=29, max_atom_id=10, train=0.8, val=0.1):
 
     file_list = glob.glob(os.path.join(path, "qm9star_*_chunk*_processed.pt"))
     pattern = re.compile(r"qm9star_(.+?)_chunk\d+_processed\.pt")
@@ -150,7 +150,8 @@ def read_dataset(path, max_atom_number=29, max_atom_id=10):
 
         data_list += dataset
 
-    train_list, val_list, test_list = split_dataset(data_list, train_ratio=0.9, val_ratio=0.0005)
+    # train_ratio and val_ratio are the ratio of the entire dataset
+    train_list, val_list, test_list = split_dataset(data_list, train_ratio=train, val_ratio=val)
 
     return train_list, val_list, test_list
 
