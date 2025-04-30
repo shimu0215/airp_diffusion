@@ -10,6 +10,9 @@ import torch.nn.functional as F
 from torch.utils.data import SubsetRandomSampler
 import numpy as np
 
+from utils import load_model
+
+
 def get_partial_val_loader(val_dataset_or_loader, fraction=0.01, batch_size=64):
 
     if isinstance(val_dataset_or_loader, DataLoader):
@@ -45,14 +48,6 @@ def noise_schedule(T, s=1e-5, device='cpu'):
 
     return alpha_t, sigma_t
 
-def get_optim(lr, model):
-    optim = torch.optim.AdamW(
-        model.parameters(),
-        lr=lr, amsgrad=True,
-        weight_decay=1e-12)
-
-    return optim
-
 def sample_time_step(x, T):
     t_val = torch.randint(
         low=0,
@@ -68,25 +63,33 @@ def sample_time_step(x, T):
 
 def sub_center(x):
 
-    center_of_mass = x.mean(dim=1, keepdim=True)
-    return x - center_of_mass
+    center_of_mass = x.mean(dim=-1, keepdim=True)
+
+    result = x - center_of_mass
+    # check the sum of last demonsion is close to 0
+    # assert torch.allclose(result.sum(dim=-1), torch.zeros_like(result.sum(dim=-1)), atol=1e-5)
+    # check if the length of the last demonstion is 3
+    # assert result.size(-1) == 3
+
+    return result
 
 def train(T, train_loader, val_loader, max_atom_number, num_class, device, dtype, batch_size):
 
     print("start training")
 
-    lr = 1e-3
+    lr = 1e-4
     epochs = 500
 
     generative_model = DiffusionEGNN(number_tokens=None, dim=num_class+1).to(device)
-    optimizer = get_optim(lr=lr, model=generative_model)
+    optimizer = torch.optim.AdamW(generative_model.parameters(), lr=lr, amsgrad=True, weight_decay=1e-12)
 
     Alpha_t, Sigma_t = noise_schedule(T, device=device)
 
     best_val_loss = float('inf')
     patience = 50
     counter = 0
-    val_fraction_ratio = 0.1
+    val_fraction_ratio = 0.01
+    atom_type_scaling = 0.25
 
     # val_fraction = get_partial_val_loader(val_loader, fraction=val_fraction_ratio, batch_size=batch_size)
     # initial_val_loss = test(generative_model, val_fraction, dtype, T, device, max_atom_number=max_atom_number)
@@ -95,10 +98,11 @@ def train(T, train_loader, val_loader, max_atom_number, num_class, device, dtype
     for epoch in range(epochs):
         for batch_idx, data in enumerate(train_loader):
             generative_model.train()
+            optimizer.zero_grad()
             x = data['pos'].to(device, dtype)
             node_mask = data['atom_mask'].to(device).bool()
             # h = data['atomic_numbers'].to(device).long()
-            h = data['atomic_numbers_one_hot'].to(device, dtype)
+            h = data['atomic_numbers_one_hot'].to(device, dtype) * atom_type_scaling
 
             # reformat
             curr_batch_size = x.size()[0] // max_atom_number
@@ -112,27 +116,36 @@ def train(T, train_loader, val_loader, max_atom_number, num_class, device, dtype
             t_val_tensor = t_val / T
 
             h = torch.cat([h, t_val_tensor], dim=-1)
+            # h.zero_()
 
             x = sub_center(x)
 
             x_noisy, noise_x = forward_diffusion(x, t_val, Alpha_t, Sigma_t, device=device)
 
-            _, pos_predict = generative_model(h, noise_x, mask=node_mask)
+            assert torch.allclose(x_noisy.sum(dim=-1), torch.zeros_like(x_noisy.sum(dim=-1)), atol=1e-5)
+            assert torch.allclose(noise_x.sum(dim=-1), torch.zeros_like(noise_x.sum(dim=-1)), atol=1e-5)
+
+            # _, pos_predict = generative_model(h, x_noisy)
+            _, pos_predict = generative_model(h, x_noisy, mask=node_mask)
             noise_predict = pos_predict - x_noisy
             noise_predict = sub_center(noise_predict)
 
+            assert torch.allclose(noise_predict.sum(dim=-1), torch.zeros_like(noise_predict.sum(dim=-1)), atol=1e-5)
+
             node_mask = node_mask.view(curr_batch_size, max_atom_number, -1)
             loss = F.mse_loss(noise_predict * node_mask, noise_x  * node_mask)
-            optimizer.zero_grad()
+
             loss.backward()
             optimizer.step()
 
-            if batch_idx % 100 == 0:
+            if batch_idx % 5 == 0:
                 print(f"Epoch [{epoch + 1}/{epochs}] Batch [{batch_idx}/{len(train_loader)}] Loss: {loss.item():.10f}")
 
-                # val_fraction = get_partial_val_loader(val_loader, fraction=val_fraction_ratio, batch_size=batch_size)
-                # val_loss = test(generative_model, val_fraction, dtype, T, device, max_atom_number=max_atom_number)
-                # print(f"Epoch [{epoch + 1}/{epochs}] Val Loss: {val_loss:.10f}")
+                print(F.mse_loss(noise_x * node_mask, torch.zeros_like(noise_predict)  * node_mask))
+
+                val_fraction = get_partial_val_loader(val_loader, fraction=val_fraction_ratio, batch_size=batch_size)
+                val_loss = test(generative_model, val_fraction, dtype, T, device, max_atom_number=max_atom_number)
+                print(f"Epoch [{epoch + 1}/{epochs}] Val Loss: {val_loss:.10f}")
                 
         val_fraction = get_partial_val_loader(val_loader, fraction=val_fraction_ratio, batch_size=batch_size)
         val_loss = test(generative_model, val_fraction, dtype, T, device, max_atom_number=max_atom_number)
@@ -190,7 +203,7 @@ def test(generative_model, test_loader, dtype, T, device, noise_steps=50, max_at
 
         return loss
 
-def test2(generative_model, test_loader, dtype, T, device, noise_steps=50, max_atom_number=29, backward_steps=100):
+def test2(generative_model, test_loader, dtype, T, device, noise_steps=100, max_atom_number=29, backward_steps=100):
     with torch.no_grad():
         generative_model.to(device)
         generative_model.eval()
@@ -275,7 +288,7 @@ def diffusion_main(path):
     dtype = torch.float32
 
     # load data settings
-    batch_size = 1024
+    batch_size = 64
     data_path = path
 
     # dataset config

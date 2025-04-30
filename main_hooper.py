@@ -40,19 +40,20 @@ def test_model(test_loader, device):
             result_list.append(test_loss)
 
     with open('result_list.pkl', 'wb') as f:
-        pickle.dump(my_list, f)
+        pickle.dump(result_list, f)
 
 
 # path = "../airp/processed"
-# diffusion_main(path)
+path = "data/processed"
+diffusion_main(path)
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-batch_size = 4096
-
-
-test_list = torch.load('/scratch/wzhao20/airp_saved_data/test_list.pt', weights_only=False, map_location=device)
-test_loader = DataLoader(test_list, batch_size=batch_size)
-test_model(test_loader=test_loader, device=device)
+# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+# batch_size = 4096
+#
+#
+# test_list = torch.load('/scratch/wzhao20/airp_saved_data/test_list.pt', weights_only=False, map_location=device)
+# test_loader = DataLoader(test_list, batch_size=batch_size)
+# test_model(test_loader=test_loader, device=device)
 
 
 # with open('result_list.pkl', 'rb') as f:

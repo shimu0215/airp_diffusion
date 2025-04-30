@@ -42,3 +42,11 @@ def set_seed(seed=42):
     torch.cuda.manual_seed_all(seed)          # GPUtorch all
     torch.backends.cudnn.deterministic = True # cuDNN
     torch.backends.cudnn.benchmark = False    # cuDNN
+
+def get_optim(lr, model):
+    optim = torch.optim.AdamW(
+        model.parameters(),
+        lr=lr, amsgrad=True,
+        weight_decay=1e-12)
+
+    return optim
